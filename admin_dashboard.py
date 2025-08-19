@@ -357,7 +357,7 @@ def show_user_management():
                     {
                         "Date": user['created_at'][:10],
                         "Role": user['role'].title(),
-                        "Status": "Active" if user['is_active'] else "Inactive"
+                        "Status": "Active" if user['is_active'] else 'Inactive'
                     }
                     for user in users
                 ])
@@ -823,12 +823,6 @@ def main_admin_interface():
     """Main admin interface with navigation"""
     SessionManager.init_session()
     SessionManager.require_role("admin")
-    
-    st.set_page_config(
-        page_title="LMS - Admin Portal",
-        page_icon="⚙️",
-        layout="wide"
-    )
     
     # Sidebar navigation
     with st.sidebar:

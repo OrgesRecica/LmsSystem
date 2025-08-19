@@ -24,13 +24,28 @@ class LMSClient:
         self.token = token
         self.headers = {"Authorization": f"Bearer {token}"} if token else {}
     
+    def check_server_connection(self) -> bool:
+        """Check if the server is accessible"""
+        try:
+            response = requests.get(f"{self.base_url}/docs", timeout=5)
+            return response.status_code == 200
+        except requests.exceptions.RequestException:
+            return False
+    
     def login(self, email: str, password: str) -> Dict[str, Any]:
         """Login user"""
-        response = requests.post(
-            f"{self.base_url}/auth/login",
-            json={"email": email, "password": password}
-        )
-        return response.json() if response.status_code == 200 else None
+        if not self.check_server_connection():
+            return {"error": "Cannot connect to server. Make sure FastAPI is running on http://localhost:8000"}
+        
+        try:
+            response = requests.post(
+                f"{self.base_url}/auth/login",
+                json={"email": email, "password": password},
+                timeout=10
+            )
+            return response.json() if response.status_code == 200 else {"error": f"Login failed: {response.status_code}"}
+        except requests.exceptions.RequestException as e:
+            return {"error": f"Connection error: {str(e)}"}
     
     def signup(self, email: str, password: str, full_name: str, role: str) -> Dict[str, Any]:
         """Register new user"""
@@ -129,6 +144,14 @@ def login_page():
     """Login page"""
     st.title("🎓 Learning Management System")
     
+    client = LMSClient(API_BASE_URL)
+    if not client.check_server_connection():
+        st.error("⚠️ Cannot connect to server. Please make sure FastAPI is running on http://localhost:8000")
+        st.info("Run: `python main.py` in your terminal to start the server")
+        return
+    else:
+        st.success("✅ Server connection OK")
+    
     tab1, tab2 = st.tabs(["Login", "Sign Up"])
     
     with tab1:
@@ -139,7 +162,6 @@ def login_page():
             submit = st.form_submit_button("Login")
             
             if submit and email and password:
-                client = LMSClient(API_BASE_URL)
                 result = client.login(email, password)
                 
                 if result and "access_token" in result:
@@ -148,6 +170,8 @@ def login_page():
                     st.session_state.token = result["access_token"]
                     st.success("Login successful!")
                     st.rerun()
+                elif result and "error" in result:
+                    st.error(result["error"])
                 else:
                     st.error("Invalid credentials")
     

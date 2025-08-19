@@ -607,12 +607,6 @@ def main_student_interface():
     SessionManager.init_session()
     SessionManager.require_role("student")
     
-    st.set_page_config(
-        page_title="LMS - Student Portal",
-        page_icon="🎓",
-        layout="wide"
-    )
-    
     # Sidebar navigation
     with st.sidebar:
         st.title("🎓 Student Portal")

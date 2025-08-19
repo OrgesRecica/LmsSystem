@@ -450,12 +450,15 @@ def show_attendance_management():
                         if submitted:
                             success_count = 0
                             error_count = 0
+                            error_details = []  # Added to collect specific error messages
                             
                             for data in attendance_data:
+                                attendance_datetime = datetime.combine(attendance_date, datetime.min.time())
+                                
                                 attendance_record = {
                                     "student_id": data["student_id"],
                                     "class_id": class_id,
-                                    "date": attendance_date.isoformat(),
+                                    "date": attendance_datetime.isoformat(),
                                     "status": data["status"],
                                     "grade": data["grade"],
                                     "notes": data["notes"]
@@ -471,11 +474,28 @@ def show_attendance_management():
                                     success_count += 1
                                 else:
                                     error_count += 1
+                                    if response:
+                                        try:
+                                            error_msg = response.json().get("detail", f"HTTP {response.status_code}")
+                                        except:
+                                            error_msg = f"HTTP {response.status_code}"
+                                    else:
+                                        error_msg = "No response from server"
+                                    
+                                    student_name = next(
+                                        (e['student']['full_name'] for e in enrollments 
+                                         if e['student']['id'] == data["student_id"]), 
+                                        "Unknown Student"
+                                    )
+                                    error_details.append(f"{student_name}: {error_msg}")
                             
                             if success_count > 0:
                                 st.success(f"Attendance saved for {success_count} students!")
                             if error_count > 0:
                                 st.error(f"Failed to save attendance for {error_count} students.")
+                                with st.expander("Error Details"):
+                                    for error in error_details:
+                                        st.write(f"• {error}")
                             
                             if success_count > 0:
                                 st.rerun()
@@ -563,7 +583,7 @@ def show_attendance_management():
             if response and response.status_code == 200:
                 attendance_records = response.json()
                 
-                if attendance_records:
+                if attendance_records and len(attendance_records) > 0:
                     # Create visualizations
                     df = pd.DataFrame([
                         {
@@ -577,22 +597,47 @@ def show_attendance_management():
                     # Attendance trend over time
                     daily_stats = df.groupby(['Date', 'Status']).size().unstack(fill_value=0)
                     
-                    fig_trend = px.line(
-                        daily_stats.reset_index(),
-                        x='Date',
-                        y=['present', 'absent', 'tardy'],
-                        title="Attendance Trend Over Time",
-                        color_discrete_map={
-                            'present': '#2E8B57',
-                            'absent': '#DC143C',
-                            'tardy': '#FF8C00'
-                        }
-                    )
+                    # Ensure all required columns exist
+                    for status in ['present', 'absent', 'tardy']:
+                        if status not in daily_stats.columns:
+                            daily_stats[status] = 0
                     
-                    st.plotly_chart(fig_trend, use_container_width=True)
+                    # Only create chart if we have sufficient data
+                    if len(daily_stats) > 0 and not daily_stats.empty:
+                        # Reset index to make Date a column
+                        daily_stats_reset = daily_stats.reset_index()
+                        
+                        # Create the line chart with proper data validation
+                        fig_trend = px.line(
+                            daily_stats_reset,
+                            x='Date',
+                            y=['present', 'absent', 'tardy'],
+                            title="Attendance Trend Over Time",
+                            color_discrete_map={
+                                'present': '#2E8B57',
+                                'absent': '#DC143C',
+                                'tardy': '#FF8C00'
+                            }
+                        )
+                        
+                        fig_trend.update_layout(
+                            xaxis_title="Date",
+                            yaxis_title="Number of Students",
+                            height=400
+                        )
+                        
+                        st.plotly_chart(fig_trend, use_container_width=True)
+                    else:
+                        st.info("Insufficient data to generate attendance trend chart.")
                     
                     # Student-wise attendance summary
                     student_stats = df.groupby(['Student', 'Status']).size().unstack(fill_value=0)
+                    
+                    # Ensure all status columns exist for student stats too
+                    for status in ['present', 'absent', 'tardy']:
+                        if status not in student_stats.columns:
+                            student_stats[status] = 0
+                    
                     student_stats['Total'] = student_stats.sum(axis=1)
                     student_stats['Attendance Rate'] = (student_stats.get('present', 0) / student_stats['Total'] * 100).round(1)
                     
@@ -608,12 +653,6 @@ def main_teacher_interface():
     """Main teacher interface with navigation"""
     SessionManager.init_session()
     SessionManager.require_role("teacher")
-    
-    st.set_page_config(
-        page_title="LMS - Teacher Portal",
-        page_icon="👩‍🏫",
-        layout="wide"
-    )
     
     # Sidebar navigation
     with st.sidebar:
